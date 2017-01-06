@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 	"path/filepath"
 	"strings"
+	"math/rand"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/ipam"
@@ -58,6 +60,41 @@ func ReleaseIP(ip_net, ip string) error {
 }
 
 func AllocateIP(ip_net, ip string) (string, error) {
+        // create a lock
+	lock := db.GetEtcdMutexLock(filepath.Join(network_key_prefix, ip_net, "pool", "lock"), 20)
+        log.Debugf("Lock instance:%s", lock)
+
+        err := lock.Lock()
+
+	var cnt int = 0
+	if err != nil {
+		// if locked by others, wait for 30 times with random 900 mil-sec interval.
+		for {
+			cnt = cnt + 1
+			time.Sleep(time.Duration(rand.Intn(900)) * time.Millisecond)
+			log.Debugf("Locked by others, %d retry ...", cnt)
+			e := lock.Lock()
+			if e == nil {
+				ip, err := getIP(ip_net, ip)
+				lock.Release()
+				return ip, err
+				break
+			}
+			if cnt > 30 {
+				log.Debugf("Abort ...")
+				break
+			}
+		}
+	} else {
+		// if lock successfully, go ahead to acquire the ip
+		ip, err := getIP(ip_net, ip)
+		lock.Release()
+		return ip, err
+	}
+        return "", errors.New("Can not allocate ip")
+}
+
+func getIP(ip_net, ip string) (string, error) {
 	ip_pool, err := db.GetKeys(filepath.Join(network_key_prefix, ip_net, "pool"))
 	if err != nil {
 		return ip, err
@@ -67,7 +104,7 @@ func AllocateIP(ip_net, ip string) (string, error) {
 	}
 	if ip == "" {
 		find_ip := strings.Split(ip_pool[0].Key, "/")
-		ip = find_ip[len(find_ip)-1]
+		ip = find_ip[len(find_ip) - 1]
 	}
 	exist := checkIPAssigned(ip_net, ip)
 	if exist == true {

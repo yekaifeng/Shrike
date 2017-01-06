@@ -93,3 +93,39 @@ func newClient() client.Client {
 	}
 	return c
 }
+
+type EtcdMutexLock struct {
+	Name    string
+	Expired int64
+}
+
+func (mutexLock EtcdMutexLock) Lock() error {
+	opts := &client.SetOptions{
+		PrevExist: client.PrevNoExist,
+		TTL:       time.Duration(mutexLock.Expired) * time.Second}
+	cli := newClient()
+	kapi := client.NewKeysAPI(cli)
+	_, err := kapi.Set(context.TODO(), mutexLock.Name, mutexLock.Name, opts)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (mutexLock EtcdMutexLock) Release() error {
+	cli := newClient()
+	kapi := client.NewKeysAPI(cli)
+	_, err := kapi.Delete(context.TODO(), mutexLock.Name, nil)
+	if err == nil {
+		return nil
+	}
+	e, ok := err.(client.Error)
+	if ok && e.Code == client.ErrorCodeKeyNotFound {
+		return nil
+	}
+	return err
+}
+
+func GetEtcdMutexLock(name string, expired int64) *EtcdMutexLock {
+	return &EtcdMutexLock{Name: name, Expired: expired}
+}
