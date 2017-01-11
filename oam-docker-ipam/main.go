@@ -11,7 +11,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "oam-docker-ipam"
 	app.Version = "1.0.0"
-	app.Author = "chao.ma"
+	app.Author = "chao.ma,kenneth.ye"
 	app.Usage = "TalkingData network plugin with remote IPAM"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{Name: "cluster-store", Value: "http://127.0.0.1:2379", Usage: "the key/value store endpoint url. [$CLUSTER_STORE]"},
