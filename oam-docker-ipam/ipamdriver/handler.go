@@ -49,6 +49,7 @@ func (iph *MyIPAMHandler) ReleasePool(request *ipam.ReleasePoolRequest) (err err
 
 func (iph *MyIPAMHandler) RequestAddress(request *ipam.RequestAddressRequest) (response *ipam.RequestAddressResponse, err error) {
 	var request_json []byte = nil
+	var mask string
 	request_json, err = json.Marshal(request)
 	if err != nil {
 		return nil, err
@@ -56,14 +57,10 @@ func (iph *MyIPAMHandler) RequestAddress(request *ipam.RequestAddressRequest) (r
 	log.Infof("RequestAddress %s", request_json)
 	ip_net := request.PoolID
 	ip := request.Address
-	config, _ := GetConfig(ip_net)
 
-	if value, ok := request.Options["RequestAddressType"]; ok && value == netlabel.Gateway || len(request.Options) == 0 {
-		log.Infof("Skip allocate gateway ip %s", ip)
-		return &ipam.RequestAddressResponse{fmt.Sprintf("%s/%s", ip, config.Mask), nil}, nil
-	}
-	ip, err = AllocateIP(ip_net, ip)
-	return &ipam.RequestAddressResponse{fmt.Sprintf("%s/%s", ip, config.Mask), nil}, err
+	macaddr,_ := request.Options[netlabel.MacAddress]
+	ip, mask, err = AllocateIP(ip_net, ip, macaddr)
+	return &ipam.RequestAddressResponse{fmt.Sprintf("%s/%s", ip, mask), nil}, err
 }
 
 func (iph *MyIPAMHandler) ReleaseAddress(request *ipam.ReleaseAddressRequest) (err error) {

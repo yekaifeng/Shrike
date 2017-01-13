@@ -31,6 +31,20 @@ type connection interface {
 	SetReadTimeout(t time.Duration) error
 }
 
+var dhcp_addr string
+var reqeusted_ip string
+
+func SetDHCPAddr(addr string) {
+	dhcp_addr = addr
+}
+func GetDHCPAddr() string {
+	return dhcp_addr
+}
+
+func SetRequestedIP(ip string) {
+	reqeusted_ip = ip
+}
+
 func New(options ...func(*Client) error) (*Client, error) {
 	c := Client{
 		timeout:   time.Second * 10,
@@ -219,6 +233,9 @@ func (c *Client) DiscoverPacket() dhcp4.Packet {
 	packet.SetBroadcast(c.broadcast)
 
 	packet.AddOption(dhcp4.OptionDHCPMessageType, []byte{byte(dhcp4.Discover)})
+	if reqeusted_ip != nil {
+		packet.AddOption(dhcp4.OptionRequestedIPAddress, net.ParseIP(reqeusted_ip))
+	}
 	//packet.PadToMinSize()
 	return packet
 }

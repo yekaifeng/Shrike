@@ -28,7 +28,7 @@ cp -rf $GOPATH/$source_dir/Godeps/_workspace/src/* $GOPATH/src/
 cp -rf $GOPATH/$source_dir $GOPATH/src
 
 # create version info
-sed -i "s/1.0.0/$version/g" $GOPATH/src/$source_dir/main.go
+sed -i "s/2.0.0/$version/g" $GOPATH/src/$source_dir/main.go
 
 # go build
 echo "building source..."

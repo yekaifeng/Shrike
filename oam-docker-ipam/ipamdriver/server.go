@@ -3,17 +3,16 @@ package ipamdriver
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
-	"time"
+	"crypto/rand"
 	"path/filepath"
-	"strings"
-	"math/rand"
+	"net"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/ipam"
 
 	"oam-docker-ipam/db"
-	"oam-docker-ipam/util"
+	dc "oam-docker-ipam/dhcp4client"
+	"github.com/d2g/dhcp4"
 )
 
 const (
@@ -31,93 +30,110 @@ func StartServer() {
 	h.ServeUnix("root", "talkingdata")
 }
 
-func AllocateIPRange(ip_start, ip_end string) []string {
-	ips := util.GetIPRange(ip_start, ip_end)
-	ip_net, mask := util.GetIPNetAndMask(ip_start)
-	for _, ip := range ips {
-		if checkIPAssigned(ip_net, ip) {
-			log.Warnf("IP %s has been allocated", ip)
-			continue
-		}
-		db.SetKey(filepath.Join(network_key_prefix, ip_net, "pool", ip), "")
-	}
-	initializeConfig(ip_net, mask)
-	fmt.Println("Allocate Containers IP Done! Total:", len(ips))
-	return ips
-}
-
 func ReleaseIP(ip_net, ip string) error {
-	err := db.DeleteKey(filepath.Join(network_key_prefix, ip_net, "assigned", ip))
+	var err error
+
+	m, err := net.ParseMAC("08-00-27-00-A8-E8") //bogus mac addr
 	if err != nil {
-		log.Infof("Skip Release IP %s", ip)
-		return nil
+		log.Printf("MAC Error:%v\n", err)
 	}
-	err = db.SetKey(filepath.Join(network_key_prefix, ip_net, "pool", ip), "")
-	if err == nil {
-		log.Infof("Release IP %s", ip)
+	c, err := dc.NewInetSock(dc.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}),
+		dc.SetRemoteAddr(net.UDPAddr{IP: net.ParseIP(dc.GetDHCPAddr()), Port: 67}))
+	if err != nil {
+		log.Error("Client Conection Generation:" + err.Error())
 	}
+
+	exampleClient, err := dc.New(dc.HardwareAddr(m), dc.Connection(c))
+	if err != nil {
+		log.Fatalf("Error:%v\n", err)
+	}
+
+	//create ack packet
+	messageid := make([]byte, 4)
+	if _, err := rand.Read(messageid); err != nil {
+		panic(err)
+	}
+
+	acknowledgementpacket := dhcp4.NewPacket(dhcp4.BootRequest)
+	acknowledgementpacket.SetCHAddr(m)
+	acknowledgementpacket.SetXId(messageid)
+	acknowledgementpacket.SetCIAddr(net.ParseIP(ip))
+
+	acknowledgementpacket.AddOption(dhcp4.OptionDHCPMessageType, []byte{byte(dhcp4.Release)})
+	acknowledgementpacket.AddOption(dhcp4.OptionServerIdentifier, []byte{ip_net})
+
+
+	err = exampleClient.Release(acknowledgementpacket)
+	if err != nil {
+		networkError, ok := err.(*net.OpError)
+		if ok && networkError.Timeout() {
+			log.Info("Release lease Failed! Because it didn't find the DHCP server very Strange")
+			log.Errorf("Error" + err.Error())
+		}
+		log.Fatalf("Error:%v\n", err)
+	} else {
+		log.Info("Relase lease successfully!\n")
+	}
+	exampleClient.Close()
+
 	return nil
 }
 
-func AllocateIP(ip_net, ip string) (string, error) {
-        // create a lock
-	lock := db.GetEtcdMutexLock(filepath.Join(network_key_prefix, ip_net, "pool", "lock"), 20)
-        log.Debugf("Lock instance:%s", lock)
+func AllocateIP(ip_net, ip string, macaddr string) (string, error) {
+	var err error
 
-        err := lock.Lock()
-
-	var cnt int = 0
+	m, err := net.ParseMAC(macaddr)
 	if err != nil {
-		// if locked by others, wait for 30 times with random 900 mil-sec interval.
-		for {
-			cnt = cnt + 1
-			time.Sleep(time.Duration(rand.Intn(900)) * time.Millisecond)
-			log.Debugf("Locked by others, %d retry ...", cnt)
-			e := lock.Lock()
-			if e == nil {
-				ip, err := getIP(ip_net, ip)
-				lock.Release()
-				return ip, err
-				break
-			}
-			if cnt > 30 {
-				log.Debugf("Abort ...")
-				break
-			}
+		log.Printf("MAC Error:%v\n", err)
+	}
+	//Create a connection to use
+	//We need to set the connection ports to 1068 and 1067 so we don't need root access
+	//c, err := NewInetSock(SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}), SetRemoteAddr(net.UDPAddr{IP: net.IPv4bcast, Port: 67}))
+	c, err := dc.NewInetSock(dc.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}),
+		dc.SetRemoteAddr(net.UDPAddr{IP: net.ParseIP(dc.GetDHCPAddr()), Port: 67}))
+	if err != nil {
+		log.Error("Client Conection Generation:" + err.Error())
+	}
+
+
+	if len(ip) != 0 {
+		dc.SetRequestedIP(ip)
+	}
+	exampleClient, err := dc.New(dc.HardwareAddr(m), dc.Connection(c))
+	if err != nil {
+		log.Fatalf("Error:%v\n", err)
+	}
+
+	success, acknowledgementpacket, err := exampleClient.Request()
+
+	log.Infof("Success:%v\n", success)
+	log.Infof("Packet:%v\n", acknowledgementpacket)
+
+	if err != nil {
+		networkError, ok := err.(*net.OpError)
+		if ok && networkError.Timeout() {
+			log.Error("Can not find a DHCP Server ...")
 		}
-	} else {
-		// if lock successfully, go ahead to acquire the ip
-		ip, err := getIP(ip_net, ip)
-		lock.Release()
-		return ip, err
+		log.Fatalf("Error:%v\n", err)
 	}
-        return "", errors.New("Can not allocate ip")
+
+	exampleClient.Close()
+	if !success {
+		log.Error("We didn't sucessfully get a DHCP Lease?")
+	} else {
+		log.Printf("IP Received YIAddr:%v\n", acknowledgementpacket.YIAddr().String())
+		log.Printf("IP Received CIAddr:%v\n", acknowledgementpacket.CIAddr().String())
+		log.Printf("IP Received GIAddr:%v\n", acknowledgementpacket.GIAddr().String())
+		log.Printf("IP Received Options:%v\n", acknowledgementpacket.Options())
+		acknowledgementOptions := acknowledgementpacket.ParseOptions()
+
+		return acknowledgementpacket.YIAddr().String(), acknowledgementOptions[dhcp4.OptionSubnetMask], nil
+	}
+
+        return "", "", errors.New("Can not allocate ip")
 }
 
-func getIP(ip_net, ip string) (string, error) {
-	ip_pool, err := db.GetKeys(filepath.Join(network_key_prefix, ip_net, "pool"))
-	if err != nil {
-		return ip, err
-	}
-	if len(ip_pool) == 0 {
-		return ip, errors.New("Pool is empty")
-	}
-	if ip == "" {
-		find_ip := strings.Split(ip_pool[0].Key, "/")
-		ip = find_ip[len(find_ip) - 1]
-	}
-	exist := checkIPAssigned(ip_net, ip)
-	if exist == true {
-		return ip, errors.New(fmt.Sprintf("IP %s has been allocated", ip))
-	}
-	err = db.DeleteKey(filepath.Join(network_key_prefix, ip_net, "pool", ip))
-	if err != nil {
-		return ip, err
-	}
-	db.SetKey(filepath.Join(network_key_prefix, ip_net, "assigned", ip), "")
-	log.Infof("Allocated IP %s", ip)
-	return ip, err
-}
+
 
 func checkIPAssigned(ip_net, ip string) bool {
 	if exist := db.IsKeyExist(filepath.Join(network_key_prefix, ip_net, "assigned", ip)); exist {
@@ -126,26 +142,6 @@ func checkIPAssigned(ip_net, ip string) bool {
 	return false
 }
 
-func initializeConfig(ip_net, mask string) error {
-	config := &Config{Ipnet: ip_net, Mask: mask}
-	config_bytes, err := json.Marshal(config)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = db.SetKey(filepath.Join(network_key_prefix, ip_net, "config"), string(config_bytes))
-	if err == nil {
-		log.Infof("Initialized Config %s for network %s", string(config_bytes), ip_net)
-	}
-	return err
-}
-
-func DeleteNetWork(ip_net string) error {
-	err := db.DeleteKey(filepath.Join(network_key_prefix, ip_net))
-	if err == nil {
-		log.Infof("DeleteNetwork %s", ip_net)
-	}
-	return err
-}
 
 func GetConfig(ip_net string) (*Config, error) {
 	config, err := db.GetKey(filepath.Join(network_key_prefix, ip_net, "config"))

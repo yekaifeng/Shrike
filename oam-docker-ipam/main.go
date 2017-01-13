@@ -10,20 +10,15 @@ import (
 func main() {
 	app := cli.NewApp()
 	app.Name = "oam-docker-ipam"
-	app.Version = "1.0.0"
+	app.Version = "2.0.0"
 	app.Author = "chao.ma,kenneth.ye"
-	app.Usage = "TalkingData network plugin with remote IPAM"
+	app.Usage = "TalkingData network plugin with remote IPAM by DHCP"
 	app.Flags = []cli.Flag{
-		cli.StringFlag{Name: "cluster-store", Value: "http://127.0.0.1:2379", Usage: "the key/value store endpoint url. [$CLUSTER_STORE]"},
+		cli.StringFlag{Name: "dhcp-server", Value: "0.0.0.0", Usage: "ip address of dhcp server. [$DHCP_SERVER]"},
 		cli.BoolFlag{Name: "debug", Usage: "debug mode [$DEBUG]"},
 	}
 	app.Commands = []cli.Command{
 		command.NewServerCommand(),
-		command.NewIPRangeCommand(),
-		command.NewReleaseIPCommand(),
-		command.NewHostRangeCommand(),
-		command.NewReleaseHostCommand(),
-		command.NewCreateNetworkCommand(),
 	}
 	app.Run(os.Args)
 }
