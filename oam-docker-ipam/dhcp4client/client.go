@@ -233,7 +233,7 @@ func (c *Client) DiscoverPacket() dhcp4.Packet {
 	packet.SetBroadcast(c.broadcast)
 
 	packet.AddOption(dhcp4.OptionDHCPMessageType, []byte{byte(dhcp4.Discover)})
-	if reqeusted_ip != nil {
+	if len(reqeusted_ip) > 0 {
 		packet.AddOption(dhcp4.OptionRequestedIPAddress, net.ParseIP(reqeusted_ip))
 	}
 	//packet.PadToMinSize()

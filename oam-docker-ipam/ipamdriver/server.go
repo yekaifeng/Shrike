@@ -60,7 +60,7 @@ func ReleaseIP(ip_net, ip string) error {
 	acknowledgementpacket.SetCIAddr(net.ParseIP(ip))
 
 	acknowledgementpacket.AddOption(dhcp4.OptionDHCPMessageType, []byte{byte(dhcp4.Release)})
-	acknowledgementpacket.AddOption(dhcp4.OptionServerIdentifier, []byte{ip_net})
+	acknowledgementpacket.AddOption(dhcp4.OptionServerIdentifier, []byte(ip_net))
 
 
 	err = exampleClient.Release(acknowledgementpacket)
@@ -79,7 +79,7 @@ func ReleaseIP(ip_net, ip string) error {
 	return nil
 }
 
-func AllocateIP(ip_net, ip string, macaddr string) (string, error) {
+func AllocateIP(ip_net, ip string, macaddr string) (string, string, error) {
 	var err error
 
 	m, err := net.ParseMAC(macaddr)
@@ -126,8 +126,8 @@ func AllocateIP(ip_net, ip string, macaddr string) (string, error) {
 		log.Printf("IP Received GIAddr:%v\n", acknowledgementpacket.GIAddr().String())
 		log.Printf("IP Received Options:%v\n", acknowledgementpacket.Options())
 		acknowledgementOptions := acknowledgementpacket.ParseOptions()
-
-		return acknowledgementpacket.YIAddr().String(), acknowledgementOptions[dhcp4.OptionSubnetMask], nil
+                mask := string(acknowledgementOptions[dhcp4.OptionSubnetMask][:])
+		return acknowledgementpacket.YIAddr().String(), mask, nil
 	}
 
         return "", "", errors.New("Can not allocate ip")
