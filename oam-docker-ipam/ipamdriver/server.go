@@ -6,10 +6,14 @@ import (
 	"crypto/rand"
 	"path/filepath"
 	"net"
+	"strconv"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/ipam"
-
+	"golang.org/x/net/context"
+	"github.com/docker/engine-api/client"
+	"github.com/docker/engine-api/types"
 	"oam-docker-ipam/db"
 	dc "oam-docker-ipam/dhcp4client"
 	"github.com/d2g/dhcp4"
@@ -33,15 +37,17 @@ func StartServer() {
 func ReleaseIP(ip_net, ip string) error {
 	var err error
 
-	m, err := net.ParseMAC("08-00-27-00-A8-E8") //bogus mac addr
+	macaddr := getMacAddr(ip) //Get the mac address from ip
+	m, err := net.ParseMAC(macaddr)
 	if err != nil {
-		log.Printf("MAC Error:%v\n", err)
+		log.Errorf("MAC Error:%v\n", err)
 	}
 	c, err := dc.NewInetSock(dc.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}),
 		dc.SetRemoteAddr(net.UDPAddr{IP: net.ParseIP(dc.GetDHCPAddr()), Port: 67}))
 	if err != nil {
 		log.Error("Client Conection Generation:" + err.Error())
 	}
+        log.Debugf("DHCP Addr: %s", dc.GetDHCPAddr())
 
 	exampleClient, err := dc.New(dc.HardwareAddr(m), dc.Connection(c))
 	if err != nil {
@@ -57,10 +63,10 @@ func ReleaseIP(ip_net, ip string) error {
 	acknowledgementpacket := dhcp4.NewPacket(dhcp4.BootRequest)
 	acknowledgementpacket.SetCHAddr(m)
 	acknowledgementpacket.SetXId(messageid)
-	acknowledgementpacket.SetCIAddr(net.ParseIP(ip))
+	acknowledgementpacket.SetYIAddr(net.ParseIP(ip))
 
 	acknowledgementpacket.AddOption(dhcp4.OptionDHCPMessageType, []byte{byte(dhcp4.Release)})
-	acknowledgementpacket.AddOption(dhcp4.OptionServerIdentifier, []byte(ip_net))
+	acknowledgementpacket.AddOption(dhcp4.OptionServerIdentifier, net.ParseIP(dc.GetDHCPAddr()))
 
 
 	err = exampleClient.Release(acknowledgementpacket)
@@ -94,10 +100,11 @@ func AllocateIP(ip_net, ip string, macaddr string) (string, string, error) {
 	if err != nil {
 		log.Error("Client Conection Generation:" + err.Error())
 	}
-
+        log.Debugf("DHCP Addr: %s", dc.GetDHCPAddr())
 
 	if len(ip) != 0 {
 		dc.SetRequestedIP(ip)
+		log.Debugf("Requested IP:%s", ip)
 	}
 	exampleClient, err := dc.New(dc.HardwareAddr(m), dc.Connection(c))
 	if err != nil {
@@ -121,13 +128,16 @@ func AllocateIP(ip_net, ip string, macaddr string) (string, string, error) {
 	if !success {
 		log.Error("We didn't sucessfully get a DHCP Lease?")
 	} else {
-		log.Printf("IP Received YIAddr:%v\n", acknowledgementpacket.YIAddr().String())
-		log.Printf("IP Received CIAddr:%v\n", acknowledgementpacket.CIAddr().String())
-		log.Printf("IP Received GIAddr:%v\n", acknowledgementpacket.GIAddr().String())
-		log.Printf("IP Received Options:%v\n", acknowledgementpacket.Options())
+		log.Debugf("IP Received YIAddr:%v\n", acknowledgementpacket.YIAddr().String())
+		log.Debugf("IP Received CIAddr:%v\n", acknowledgementpacket.CIAddr().String())
+		log.Debugf("IP Received GIAddr:%v\n", acknowledgementpacket.GIAddr().String())
+		log.Debugf("IP Received Options:%v\n", acknowledgementpacket.Options())
 		acknowledgementOptions := acknowledgementpacket.ParseOptions()
-                mask := string(acknowledgementOptions[dhcp4.OptionSubnetMask][:])
-		return acknowledgementpacket.YIAddr().String(), mask, nil
+		log.Debug(acknowledgementOptions[dhcp4.OptionSubnetMask])
+                var mask = net.IPMask(acknowledgementOptions[dhcp4.OptionSubnetMask])
+                masknum,_ := mask.Size()
+                log.Debugf("Mask:%d",masknum)
+		return acknowledgementpacket.YIAddr().String(), strconv.Itoa(masknum), nil
 	}
 
         return "", "", errors.New("Can not allocate ip")
@@ -151,4 +161,41 @@ func GetConfig(ip_net string) (*Config, error) {
 	conf := &Config{}
 	json.Unmarshal([]byte(config), conf)
 	return conf, err
+}
+
+func getMacAddr(ip string) string {
+	containers, _ := ListContainers("unix:///var/run/docker.sock")
+	for _,container := range containers {
+		networks := container.NetworkSettings.Networks
+		for _,n := range networks {
+			if n.IPAddress == ip {
+				log.Debugf("Found MacAddress:%s", n.MacAddress)
+				return n.MacAddress
+			}
+		}
+	}
+	log.Debug("Mac address not found")
+	return ""
+}
+
+func ListContainers(socketurl string) ([]types.Container, error) {
+	var c *client.Client
+	var err error
+	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
+	c,err = client.NewClient(socketurl, "", nil, defaultHeaders)
+	if err != nil {
+		log.Fatalf("Create Docker Client error", err)
+		return nil, err
+	}
+
+	// List containers
+	opts := types.ContainerListOptions{}
+	ctx, cancel := context.WithTimeout(context.Background(), 20000*time.Millisecond)
+	defer cancel()
+	containers, err := c.ContainerList(ctx, opts)
+	if err != nil {
+		log.Fatal("List Container error", err)
+		return nil, err
+	}
+	return containers, err
 }
