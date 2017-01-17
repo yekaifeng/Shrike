@@ -174,6 +174,14 @@ LISTEN_ADDR=0.0.0.0         #本机用于请求DHCP的地址,缺省为所有端�
 
 ```shell
 systemctl start oam-docker-ipam
+# systemctl status oam-docker-ipam
+● oam-docker-ipam.service - oam-docker-ipam
+   Loaded: loaded (/usr/lib/systemd/system/oam-docker-ipam.service; disabled; vendor preset: disabled)
+   Active: active (running) since 二 2017-01-17 03:52:24 EST; 38min ago
+ Main PID: 3031 (oam-docker-ipam)
+   Memory: 3.1M
+   CGroup: /system.slice/oam-docker-ipam.service
+           └─3031 /usr/bin/oam-docker-ipam --debug=true --dhcp-server=192.168.59.203 --listen-addr=0.0.0.0 server
 ```
 
 ##### 创建网络并运行容器
@@ -189,7 +197,7 @@ docker network create
 docker run -d --name 1 --net macvlan --privileged centos:latest /bin/bash -c 'while true;do echo test;sleep 90;done'
 ```
 
-##### 构建RPM
+### 如何构建RPM
 
 ```shell
 ./build-rpm.sh oam-docker-ipam 2.0.1
@@ -197,3 +205,6 @@ docker run -d --name 1 --net macvlan --privileged centos:latest /bin/bash -c 'wh
 
 构建需要Go1.5环境, rpmbuild命令,生成rpm放在rpms目录
 
+### 有关功能限制
+
+- 因为d4d需要绑定68端口作为dhcp客户端发请求, 宿主机需要关闭dhclient功能,否则会互相冲突
