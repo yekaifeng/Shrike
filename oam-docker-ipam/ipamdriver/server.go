@@ -82,6 +82,7 @@ func ReleaseIP(ip_net, ip string) error {
 		log.Fatalf("Error:%v\n", err)
 	} else {
 		delete(imap, ip)
+		log.Debugf(imap)
 		log.Info("Relase lease successfully!\n")
 	}
 	exampleClient.Close()
@@ -137,12 +138,12 @@ func AllocateIP(ip_net, ip string, macaddr string) (string, string, error) {
 		log.Debugf("IP Received GIAddr:%v\n", acknowledgementpacket.GIAddr().String())
 		log.Debugf("IP Received Options:%v\n", acknowledgementpacket.Options())
 		acknowledgementOptions := acknowledgementpacket.ParseOptions()
-		log.Debug(acknowledgementOptions[dhcp4.OptionSubnetMask])
                 var mask = net.IPMask(acknowledgementOptions[dhcp4.OptionSubnetMask])
                 masknum,_ := mask.Size()
-                log.Debugf("Mask:%d",masknum)
-		imap[ip] = macaddr
-		return acknowledgementpacket.YIAddr().String(), strconv.Itoa(masknum), nil
+		yiaddr := acknowledgementpacket.YIAddr().String()
+		imap[yiaddr] = macaddr
+		log.Debugf(imap)
+		return yiaddr, strconv.Itoa(masknum), nil
 	}
 
         return "", "", errors.New("Can not allocate ip")
@@ -209,4 +210,5 @@ func loadIpMap() {
 			log.Debugf("Found IP: MacAddress %s:%s", n.IPAddress,n.MacAddress)
 		}
 	}
+	log.Debugf(imap)
 }
