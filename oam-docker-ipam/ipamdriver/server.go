@@ -45,7 +45,7 @@ func ReleaseIP(ip_net, ip string) error {
 	if err != nil {
 		log.Errorf("MAC Error:%v\n", err)
 	}
-	c, err := dc.NewInetSock(dc.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}),
+	c, err := dc.NewInetSock(dc.SetLocalAddr(net.UDPAddr{IP: net.ParseIP(dc.GetListenAddr()), Port: 68}),
 		dc.SetRemoteAddr(net.UDPAddr{IP: net.ParseIP(dc.GetDHCPAddr()), Port: 67}))
 	if err != nil {
 		log.Error("Client Conection Generation:" + err.Error())
@@ -100,7 +100,7 @@ func AllocateIP(ip_net, ip string, macaddr string) (string, string, error) {
 	//Create a connection to use
 	//We need to set the connection ports to 1068 and 1067 so we don't need root access
 	//c, err := NewInetSock(SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}), SetRemoteAddr(net.UDPAddr{IP: net.IPv4bcast, Port: 67}))
-	c, err := dc.NewInetSock(dc.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}),
+	c, err := dc.NewInetSock(dc.SetLocalAddr(net.UDPAddr{IP: net.ParseIP(dc.GetListenAddr()), Port: 68}),
 		dc.SetRemoteAddr(net.UDPAddr{IP: net.ParseIP(dc.GetDHCPAddr()), Port: 67}))
 	if err != nil {
 		log.Error("Client Conection Generation:" + err.Error())

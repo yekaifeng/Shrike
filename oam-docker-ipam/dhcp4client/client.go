@@ -32,6 +32,7 @@ type connection interface {
 }
 
 var dhcp_addr string
+var listen_addr string
 var reqeusted_ip string
 
 func SetDHCPAddr(addr string) {
@@ -39,6 +40,13 @@ func SetDHCPAddr(addr string) {
 }
 func GetDHCPAddr() string {
 	return dhcp_addr
+}
+
+func SetListenAddr(addr string) {
+	listen_addr = addr
+}
+func GetListenAddr() string {
+	return listen_addr
 }
 
 func SetRequestedIP(ip string) {

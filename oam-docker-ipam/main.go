@@ -14,7 +14,8 @@ func main() {
 	app.Author = "chao.ma,kenneth.ye"
 	app.Usage = "TalkingData network plugin with remote IPAM by DHCP"
 	app.Flags = []cli.Flag{
-		cli.StringFlag{Name: "dhcp-server", Value: "0.0.0.0", Usage: "ip address of dhcp server. [$DHCP_SERVER]"},
+	cli.StringFlag{Name: "dhcp-server", Value: "0.0.0.0", Usage: "remote ip address of dhcp server. [$DHCP_SERVER]"},
+		cli.StringFlag{Name: "listen-addr", Value: "0.0.0.0", Usage: "local ip address for dhcp client. [$LISTEN_ADDR]"},
 		cli.BoolFlag{Name: "debug", Usage: "debug mode [$DEBUG]"},
 	}
 	app.Commands = []cli.Command{
