@@ -179,13 +179,21 @@ systemctl start oam-docker-ipam
 ##### 创建网络并运行容器
 
 ```shell
-# docker network create 
+docker network create 
 -d macvlan 
 --subnet=192.168.59.0/24 
 --gateway=192.168.59.1 
 --ipam-driver=talkingdata 
 --aux-address="DefaultGatewayIPv4=192.168.59.1" 
 -o parent=enp0s8 macvlan
-# docker run -d --name 1 --net macvlan --privileged centos:latest /bin/bash -c 'while true;do echo test;sleep 90;done'
+docker run -d --name 1 --net macvlan --privileged centos:latest /bin/bash -c 'while true;do echo test;sleep 90;done'
 ```
+
+##### 构建RPM
+
+```shell
+./build-rpm.sh oam-docker-ipam 2.0.1
+```
+
+构建需要Go1.5环境, rpmbuild命令,生成rpm放在rpms目录
 
