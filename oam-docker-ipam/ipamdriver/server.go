@@ -23,12 +23,15 @@ const (
 	network_key_prefix = "/talkingdata/containers"
 )
 
+var imap = make(map[string]string)
+
 type Config struct {
 	Ipnet string
 	Mask  string
 }
 
 func StartServer() {
+	loadIpMap()
 	d := &MyIPAMHandler{}
 	h := ipam.NewHandler(d)
 	h.ServeUnix("root", "talkingdata")
@@ -78,6 +81,7 @@ func ReleaseIP(ip_net, ip string) error {
 		}
 		log.Fatalf("Error:%v\n", err)
 	} else {
+		delete(imap, ip)
 		log.Info("Relase lease successfully!\n")
 	}
 	exampleClient.Close()
@@ -137,6 +141,7 @@ func AllocateIP(ip_net, ip string, macaddr string) (string, string, error) {
                 var mask = net.IPMask(acknowledgementOptions[dhcp4.OptionSubnetMask])
                 masknum,_ := mask.Size()
                 log.Debugf("Mask:%d",masknum)
+		imap[ip] = macaddr
 		return acknowledgementpacket.YIAddr().String(), strconv.Itoa(masknum), nil
 	}
 
@@ -164,18 +169,13 @@ func GetConfig(ip_net string) (*Config, error) {
 }
 
 func getMacAddr(ip string) string {
-	containers, _ := ListContainers("unix:///var/run/docker.sock")
-	for _,container := range containers {
-		networks := container.NetworkSettings.Networks
-		for _,n := range networks {
-			if n.IPAddress == ip {
-				log.Debugf("Found MacAddress:%s", n.MacAddress)
-				return n.MacAddress
-			}
-		}
+	if mac,found := imap[ip];found {
+		log.Debugf("Found IP:MAC %s:%s",ip,mac)
+		return mac
+	}else {
+		log.Debug("IP not found")
+		return ""
 	}
-	log.Debug("Mac address not found")
-	return ""
 }
 
 func ListContainers(socketurl string) ([]types.Container, error) {
@@ -198,4 +198,15 @@ func ListContainers(socketurl string) ([]types.Container, error) {
 		return nil, err
 	}
 	return containers, err
+}
+
+func loadIpMap() {
+	containers, _ := ListContainers("unix:///var/run/docker.sock")
+	for _,container := range containers {
+		networks := container.NetworkSettings.Networks
+		for _,n := range networks {
+			imap[n.IPAddress] = n.MacAddress
+			log.Debugf("Found IP: MacAddress %s:%s", n.IPAddress,n.MacAddress)
+		}
+	}
 }
