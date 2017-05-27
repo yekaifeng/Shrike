@@ -1,6 +1,5 @@
 # D4D (DHCP for Docker)
 
-![Shrike Logo](logo.jpg?raw=true "Shrike Logo")
 
 
 ### 开发背景
